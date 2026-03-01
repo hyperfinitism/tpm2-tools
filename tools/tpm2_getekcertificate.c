@@ -1216,8 +1216,24 @@ static tool_rc process_output(void) {
     if (ctx.web_cert_buffer && is_intel_cert && !ctx.is_cert_raw) {
         char *split = strstr((char *)ctx.web_cert_buffer, "certificate");
         char *copy_buffer = base64_decode(&split, ctx.web_cert_buffer_size);
-        ctx.web_cert_buffer_size = strlen(PEM_BEGIN_CERT_LINE) +
+        if (!copy_buffer) {
+            LOG_ERR("Failed to decode Intel EK certificate");
+            return tool_rc_general_error;
+        }
+        size_t pem_size = strlen(PEM_BEGIN_CERT_LINE) +
             strlen(copy_buffer) + strlen(PEM_END_CERT_LINE);
+        /* Ensure the buffer is large enough to hold the PEM-formatted cert. */
+        if (pem_size >= ctx.curl_buffer_size) {
+            unsigned char *new_buf = realloc(ctx.web_cert_buffer, pem_size + 1);
+            if (!new_buf) {
+                LOG_ERR("OOM when converting EK cert to PEM");
+                free(copy_buffer);
+                return tool_rc_general_error;
+            }
+            ctx.web_cert_buffer = new_buf;
+            ctx.curl_buffer_size = pem_size + 1;
+        }
+        ctx.web_cert_buffer_size = pem_size;
         strcpy((char *)ctx.web_cert_buffer, PEM_BEGIN_CERT_LINE);
         strcpy((char *)ctx.web_cert_buffer + strlen(PEM_BEGIN_CERT_LINE),
             copy_buffer);
